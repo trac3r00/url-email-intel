@@ -48,6 +48,14 @@ By default, active URL fetch/check endpoints block localhost and private network
 ALLOW_PRIVATE_TARGETS=true
 ```
 
+## Cookies behind proxies
+
+Production uses secure cookies automatically when the request is seen as HTTPS. For local production-mode HTTP smoke tests only, set:
+
+```bash
+COOKIE_SECURE=false
+```
+
 ## Deploy
 
 ### Render Blueprint

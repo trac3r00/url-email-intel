@@ -53,6 +53,7 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 *
 const makeSlug = customAlphabet('23456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz', 7);
 const HTTP_TIMEOUT_MS = Number(process.env.HTTP_TIMEOUT_MS || 12000);
 const ALLOW_PRIVATE_TARGETS = process.env.ALLOW_PRIVATE_TARGETS === 'true';
+const cookieSecure = process.env.COOKIE_SECURE ? process.env.COOKIE_SECURE !== 'false' : (isProd ? 'auto' : false);
 
 initDb();
 seedAdmin();
@@ -65,7 +66,7 @@ app.use(session({
   secret: process.env.SESSION_SECRET || 'dev-change-me-url-email-intel',
   resave: false,
   saveUninitialized: false,
-  cookie: { httpOnly: true, sameSite: 'lax', secure: isProd, maxAge: 1000 * 60 * 60 * 24 * 14 }
+  cookie: { httpOnly: true, sameSite: 'lax', secure: cookieSecure, maxAge: 1000 * 60 * 60 * 24 * 14 }
 }));
 
 function initDb() {
@@ -230,7 +231,10 @@ app.post('/api/auth/login', (req, res) => {
   req.session.user = { id: user.id, email: user.email, role: user.role };
   res.json({ user: req.session.user });
 });
-app.post('/api/auth/logout', requireAuth, (req, res) => req.session.destroy(() => res.json({ ok: true })));
+app.post('/api/auth/logout', (req, res) => {
+  if (!req.session) return res.json({ ok: true });
+  req.session.destroy(() => res.json({ ok: true }));
+});
 app.get('/api/auth/me', (req, res) => res.json({ user: req.session?.user || null }));
 app.get('/api/stats', requireAuth, (req, res) => {
   const links = db.prepare('SELECT count(*) AS total, coalesce(sum(hits),0) AS hits FROM links').get();

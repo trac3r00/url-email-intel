@@ -32,7 +32,7 @@ function App() {
   return <main>
     <header>
       <div><p className="eyebrow">Security Ops Lab</p><h1>URL & Email Intel</h1></div>
-      <div className="user"><span>{user.email}</span><button onClick={() => api('/api/auth/logout', { method: 'POST' }).then(() => setUser(null))}>Logout</button></div>
+      <div className="user"><span>{user.email}</span><button onClick={() => api('/api/auth/logout', { method: 'POST' }).finally(() => setUser(null))}>Logout</button></div>
     </header>
     <section className="hero"><div><h2>Phishing surface, one console.</h2><p>Short links, URL extraction, reputation checks, MX/SPF/DMARC, and .eml triage in a clean operator UI.</p></div><div className="badge">Auth protected · SQLite · VT optional · SSRF guard</div></section>
     <nav>{['overview','shortener','master','checker','email','toolkit'].map(t => <button className={tab===t?'active':''} onClick={() => setTab(t)} key={t}>{label(t)}</button>)}</nav>
