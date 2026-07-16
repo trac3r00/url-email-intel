@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: url-email-intel
+    runtime: docker
+    plan: free
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PUBLIC_URL
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: VIRUSTOTAL_API_KEY
+        sync: false
+    disk:
+      name: url-email-intel-data
+      mountPath: /app/data
+      sizeGB: 1
