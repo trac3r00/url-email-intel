@@ -73,7 +73,7 @@ function initDb() {
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (id INTEGER PRIMARY KEY, email TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'admin', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS links (id INTEGER PRIMARY KEY, slug TEXT UNIQUE NOT NULL, target_url TEXT NOT NULL, title TEXT, created_by INTEGER, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, expires_at TEXT NOT NULL, hits INTEGER NOT NULL DEFAULT 0, last_hit_at TEXT);
-    CREATE TABLE IF NOT EXISTS url_lists (id INTEGER PRIMARY KEY, source_url TEXT NOT NULL, urls_json TEXT NOT NULL, created_by INTEGER, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+    CREATE TABLE IF NOT EXISTS url_lists (id INTEGER PRIMARY KEY, slug TEXT UNIQUE NOT NULL, title TEXT, urls_json TEXT NOT NULL, created_by INTEGER, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
     CREATE TABLE IF NOT EXISTS checks (id INTEGER PRIMARY KEY, input TEXT NOT NULL, kind TEXT NOT NULL, result_json TEXT NOT NULL, created_by INTEGER, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
   `);
 }
@@ -269,15 +269,25 @@ app.get('/s/:slug', (req, res) => {
 });
 app.post('/api/master-list', requireAuth, async (req, res) => {
   try {
-    const sourceUrl = normalizeUrl(req.body.url);
-    await assertPublicTarget(sourceUrl);
-    const response = await fetch(sourceUrl, { signal: AbortSignal.timeout(HTTP_TIMEOUT_MS), headers: { 'user-agent': 'url-email-intel/0.2 master-url-lister' } });
-    if (!response.ok) throw new Error(`Fetch failed with HTTP ${response.status}`);
-    const html = await response.text();
-    const urls = extractUrls(html, sourceUrl).map(u => ({ url: u, host: new URL(u).hostname, rootDomain: parseDomain(new URL(u).hostname).domain })).sort((a, b) => a.host.localeCompare(b.host));
-    db.prepare('INSERT INTO url_lists (source_url, urls_json, created_by) VALUES (?, ?, ?)').run(sourceUrl, JSON.stringify(urls), req.session.user.id);
-    res.json({ sourceUrl, count: urls.length, summary: summarizeUrls(urls), urls });
+    const urls = (req.body.urls || []).map(u => String(u).trim()).filter(Boolean);
+    if (!urls.length) throw new Error('Provide at least one URL');
+    const slug = makeSlug();
+    const title = req.body.title || null;
+    db.prepare('INSERT INTO url_lists (slug, title, urls_json, created_by) VALUES (?, ?, ?, ?)').run(slug, title, JSON.stringify(urls), req.session.user.id);
+    const viewUrl = absoluteUrl(req, slug).replace('/s/', '/m/');
+    res.json({ slug, viewUrl, title, count: urls.length, urls });
   } catch (e) { res.status(400).json({ error: e.message }); }
+});
+app.get('/api/master-list', requireAuth, (req, res) => {
+  const rows = db.prepare('SELECT slug, title, urls_json AS urlsJson, created_at AS createdAt FROM url_lists ORDER BY created_at DESC LIMIT 50').all();
+  res.json({ lists: rows.map(r => ({ slug: r.slug, title: r.title, count: JSON.parse(r.urlsJson).length, createdAt: r.createdAt })) });
+});
+app.get('/m/:slug', (req, res) => {
+  const list = db.prepare('SELECT * FROM url_lists WHERE slug = ?').get(req.params.slug);
+  if (!list) return res.status(404).type('text').send('list not found');
+  const urls = JSON.parse(list.urls_json);
+  const title = list.title ? `# ${list.title}\n\n` : '';
+  res.type('text/plain').send(title + urls.join('\n') + '\n');
 });
 app.post('/api/check-url', requireAuth, async (req, res) => {
   try {
@@ -315,7 +325,7 @@ const dist = path.join(root, 'dist');
 if (fs.existsSync(dist)) {
   app.use(express.static(dist));
   app.use((req, res, next) => {
-    if (req.path.startsWith('/api/') || req.path.startsWith('/s/')) return next();
+    if (req.path.startsWith('/api/') || req.path.startsWith('/s/') || req.path.startsWith('/m/')) return next();
     res.sendFile(path.join(dist, 'index.html'));
   });
 }

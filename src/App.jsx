@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 import './style.css';
 
+/* ─── API helper ──────────────────────────── */
 const api = async (path, opts = {}) => {
   const headers = opts.body instanceof FormData ? {} : { 'content-type': 'application/json' };
   const res = await fetch(path, { credentials: 'include', headers, ...opts });
@@ -9,9 +10,30 @@ const api = async (path, opts = {}) => {
   if (!res.ok) throw new Error(data.error || res.statusText);
   return data;
 };
-const fmt = value => value ? new Date(value).toLocaleString() : '-';
-const Json = ({ data }) => <pre className="json">{data ? JSON.stringify(data, null, 2) : 'No result yet'}</pre>;
 
+/* ─── Shared UI primitives (shadcn-style) ─── */
+function Button({ children, variant = 'default', className = '', ...props }) {
+  const base = 'inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:pointer-events-none disabled:opacity-50 px-4 py-2';
+  const variants = {
+    default: 'bg-accent text-white hover:bg-accent-hover',
+    secondary: 'bg-card border border-border text-zinc-200 hover:bg-card-hover',
+    ghost: 'hover:bg-card-hover text-zinc-400 hover:text-zinc-100',
+    destructive: 'bg-danger text-white hover:bg-red-600',
+  };
+  return <button className={`${base} ${variants[variant]} ${className}`} {...props}>{children}</button>;
+}
+function Input({ className = '', ...props }) {
+  return <input className={`flex h-10 w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-zinc-100 placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent ${className}`} {...props} />;
+}
+function Card({ children, className = '' }) {
+  return <div className={`rounded-lg border border-border bg-card p-6 ${className}`}>{children}</div>;
+}
+function Badge({ children, variant = 'default' }) {
+  const styles = { default: 'bg-zinc-800 text-zinc-300', success: 'bg-green-950 text-green-400 border-green-800', danger: 'bg-red-950 text-red-400 border-red-800', warning: 'bg-yellow-950 text-yellow-400 border-yellow-800' };
+  return <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium border ${styles[variant]}`}>{children}</span>;
+}
+
+/* ─── Hook ────────────────────────────────── */
 function useAction() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -22,43 +44,327 @@ function useAction() {
   return { busy, error, run, clear: () => setError('') };
 }
 
+/* ─── Clipboard helper ────────────────────── */
+function CopyButton({ text }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => { await navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); };
+  return <Button variant="secondary" onClick={copy} className="text-xs h-8 px-3">{copied ? '✓ Copied' : 'Copy'}</Button>;
+}
+
+/* ─── App ─────────────────────────────────── */
 function App() {
   const [user, setUser] = useState(undefined);
-  const [tab, setTab] = useState('overview');
-  const [loginError, setLoginError] = useState('');
+  const [tab, setTab] = useState('shortener');
   useEffect(() => { api('/api/auth/me').then(d => setUser(d.user)).catch(() => setUser(null)); }, []);
-  if (user === undefined) return <main className="login"><section className="card"><h1>Loading…</h1></section></main>;
-  if (!user) return <Login onLogin={setUser} error={loginError} setError={setLoginError} />;
-  return <main>
-    <header>
-      <div><p className="eyebrow">Security Ops Lab</p><h1>URL & Email Intel</h1></div>
-      <div className="user"><span>{user.email}</span><button onClick={() => api('/api/auth/logout', { method: 'POST' }).finally(() => setUser(null))}>Logout</button></div>
-    </header>
-    <section className="hero"><div><h2>Phishing surface, one console.</h2><p>Short links, URL extraction, reputation checks, MX/SPF/DMARC, and .eml triage in a clean operator UI.</p></div><div className="badge">Auth protected · SQLite · VT optional · SSRF guard</div></section>
-    <nav>{['overview','shortener','master','checker','email','toolkit'].map(t => <button className={tab===t?'active':''} onClick={() => setTab(t)} key={t}>{label(t)}</button>)}</nav>
-    {tab === 'overview' && <Overview />}
-    {tab === 'shortener' && <Shortener />}
-    {tab === 'master' && <MasterList />}
-    {tab === 'checker' && <Checker />}
-    {tab === 'email' && <EmailAnalyzer />}
-    {tab === 'toolkit' && <Toolkit />}
-  </main>;
-}
-function label(t){ return ({overview:'Overview', shortener:'URL Shortener', master:'Master URL Lister', checker:'URL Checker', email:'Email/Sender Analyzer', toolkit:'URL/Email Toolkit'})[t]; }
-function Login({ onLogin, error, setError }) {
-  const [email, setEmail] = useState('admin@example.com');
-  const [password, setPassword] = useState('');
-  async function submit(e){ e.preventDefault(); setError(''); try { const d = await api('/api/auth/login', { method:'POST', body: JSON.stringify({ email, password }) }); onLogin(d.user); } catch(e){ setError(e.message); } }
-  return <main className="login"><section className="card"><p className="eyebrow">URL & Email Intel</p><h1>Security project console</h1><p>Log in to access the URL shortener, reputation checker, and .eml analyzer.</p><form onSubmit={submit}><input value={email} onChange={e=>setEmail(e.target.value)} placeholder="email"/><input value={password} onChange={e=>setPassword(e.target.value)} placeholder="password" type="password"/><button>Login</button></form>{error && <p className="err">{error}</p>}<p className="hint">First run creates data/INITIAL_ADMIN.txt if ADMIN_PASSWORD is not set.</p></section></main>;
-}
-function Notice({ action }) { return <>{action.error && <p className="err">{action.error}</p>}{action.busy && <p className="hint">Working…</p>}</>; }
-function Overview(){ const [stats,setStats]=useState(null); const action=useAction(); useEffect(()=>{ action.run(async()=>setStats(await api('/api/stats'))); },[]); return <Panel title="Operations overview"><Notice action={action}/>{stats && <><div className="metrics"><Metric label="Short links" value={stats.links.total}/><Metric label="Total hits" value={stats.links.hits}/><Metric label="URL lists" value={stats.lists.total}/><Metric label="Checks" value={stats.checks.reduce((n,c)=>n+c.count,0)}/></div><h3>Recent investigations</h3><div className="table">{stats.recent.map((r,i)=><div key={i}><b>{r.kind.toUpperCase()} · {r.input}</b><span>{r.result?.risk?.verdict || r.result?.subject || 'recorded'}</span><small>{fmt(r.createdAt)}</small></div>)}</div></>}</Panel>; }
-function Metric({label,value}){ return <div className="metric"><strong>{value}</strong><span>{label}</span></div>; }
-function Shortener(){ const [url,setUrl]=useState(''); const [days,setDays]=useState(14); const [slug,setSlug]=useState(''); const [result,setResult]=useState(null); const [links,setLinks]=useState([]); const action=useAction(); const refresh=()=>api('/api/shorten').then(d=>setLinks(d.links)); useEffect(()=>{refresh().catch(()=>{});},[]); async function submit(e){e.preventDefault(); await action.run(async()=>{ const d=await api('/api/shorten',{method:'POST',body:JSON.stringify({url,retentionDays:days,slug:slug||undefined})}); setResult(d); setUrl(''); setSlug(''); await refresh(); });} return <Panel title="Shorten with retention"><form onSubmit={submit} className="grid"><input required value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://example.com/payroll-login"/><input type="number" min="1" max="365" value={days} onChange={e=>setDays(e.target.value)} title="Retention days"/><input value={slug} onChange={e=>setSlug(e.target.value)} placeholder="custom slug (optional)"/><button disabled={action.busy}>Create</button></form><Notice action={action}/>{result && <div className="result"><a href={result.shortUrl} target="_blank">{result.shortUrl}</a><small>Expires {fmt(result.expiresAt)}</small></div>}<h3>Recent links</h3><div className="table">{links.map(l=><div key={l.slug}><b>{l.slug}</b><span>{l.targetUrl}</span><small>{l.hits} hits · expires {fmt(l.expiresAt)}</small></div>)}</div></Panel>; }
-function MasterList(){ const [url,setUrl]=useState(''); const [result,setResult]=useState(null); const action=useAction(); async function submit(e){e.preventDefault(); await action.run(async()=>setResult(await api('/api/master-list',{method:'POST',body:JSON.stringify({url})})));} return <Panel title="Master URL lister"><p>Fetch a page, resolve relative links, and group extracted URLs by host/root domain.</p><form onSubmit={submit} className="grid"><input required value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://example.com"/><button disabled={action.busy}>Extract</button></form><Notice action={action}/>{result && <><div className="metrics"><Metric label="URLs found" value={result.count}/><Metric label="Unique hosts" value={result.summary.length}/></div><div className="chips">{result.summary.slice(0,8).map(x=><span key={x.host}>{x.host} · {x.count}</span>)}</div></>}<Json data={result}/></Panel>; }
-function Checker(){ const [url,setUrl]=useState(''); const [result,setResult]=useState(null); const action=useAction(); async function submit(e){e.preventDefault(); await action.run(async()=>setResult(await api('/api/check-url',{method:'POST',body:JSON.stringify({url})})));} return <Panel title="URL checker"><p>DNS, HTTP status/redirect chain, SSRF guard, domain parsing, risk score, and VirusTotal reputation when configured.</p><form onSubmit={submit} className="grid"><input required value={url} onChange={e=>setUrl(e.target.value)} placeholder="https://suspicious.example/path"/><button disabled={action.busy}>Check</button></form><Notice action={action}/>{result?.risk && <div className={`risk ${result.risk.verdict}`}><b>{result.risk.verdict}</b><span>Risk score {result.risk.score}/100</span><small>{result.risk.signals.join(', ') || 'No obvious heuristic hits'}</small></div>}<Json data={result}/></Panel>; }
-function EmailAnalyzer(){ const [result,setResult]=useState(null); const action=useAction(); async function submit(e){e.preventDefault(); const fd=new FormData(e.currentTarget); await action.run(async()=>setResult(await api('/api/email-analyze',{method:'POST',body:fd})));} return <Panel title="Email/Sender analyzer"><p>Upload .eml to inspect sender identity, MX, SPF TXT, DMARC TXT, Authentication-Results, Received chain, and embedded URLs.</p><form onSubmit={submit} className="grid"><input required name="eml" type="file" accept=".eml,message/rfc822"/><button disabled={action.busy}>Analyze</button></form><Notice action={action}/>{result && <><div className="metrics"><Metric label="Received hops" value={result.receivedCount}/><Metric label="Embedded URLs" value={result.urls.length}/><Metric label="Warnings" value={result.warnings.length}/></div><div className="chips">{result.warnings.map(w=><span key={w}>{w}</span>)}</div></>}<Json data={result}/></Panel>; }
-function Toolkit(){ const [text,setText]=useState('hxxps://example[.]com/login'); const refang=useMemo(()=>text.replaceAll('hxxp','http').replaceAll('[.]','.').replaceAll('(.)','.'),[text]); const defang=useMemo(()=>text.replace(/https?:\/\//g,m=>m.replace('http','hxxp')).replace(/\./g,'[.]'),[text]); const domains=useMemo(()=>[...new Set(refang.match(/(?:[a-z0-9-]+\.)+[a-z]{2,}/gi)||[])], [refang]); return <Panel title="URL/Email quick toolkit"><textarea value={text} onChange={e=>setText(e.target.value)} /><div className="cards"><div><h3>Refang</h3><code>{refang}</code></div><div><h3>Defang</h3><code>{defang}</code></div><div><h3>Domains</h3><code>{domains.join('\n') || 'none'}</code></div></div></Panel>; }
-function Panel({title, children}){ return <section className="card"><h2>{title}</h2>{children}</section>; }
+  if (user === undefined) return <div className="min-h-screen bg-bg flex items-center justify-center"><p className="text-muted">Loading…</p></div>;
+  if (!user) return <Login onLogin={setUser} />;
 
-createRoot(document.getElementById('root')).render(<App/>);
+  const tabs = [
+    { id: 'shortener', label: 'Shortener' },
+    { id: 'master', label: 'URL List' },
+    { id: 'checker', label: 'Checker' },
+    { id: 'email', label: 'Email' },
+    { id: 'toolkit', label: 'Toolkit' },
+  ];
+
+  return (
+    <div className="min-h-screen bg-bg">
+      <header className="border-b border-border">
+        <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <h1 className="text-lg font-semibold text-zinc-100">URL & Email Intel</h1>
+            <Badge>Security Lab</Badge>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-muted">{user.email}</span>
+            <Button variant="ghost" onClick={() => api('/api/auth/logout', { method: 'POST' }).finally(() => setUser(null))}>Logout</Button>
+          </div>
+        </div>
+      </header>
+      <div className="max-w-5xl mx-auto px-4 pt-6">
+        <nav className="flex gap-1 border-b border-border mb-6">
+          {tabs.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${tab === t.id ? 'border-accent text-zinc-100' : 'border-transparent text-muted hover:text-zinc-300'}`}>
+              {t.label}
+            </button>
+          ))}
+        </nav>
+        {tab === 'shortener' && <Shortener />}
+        {tab === 'master' && <MasterList />}
+        {tab === 'checker' && <Checker />}
+        {tab === 'email' && <EmailAnalyzer />}
+        {tab === 'toolkit' && <Toolkit />}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Login ───────────────────────────────── */
+function Login({ onLogin }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  async function submit(e) {
+    e.preventDefault(); setError('');
+    try { const d = await api('/api/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }); onLogin(d.user); }
+    catch (e) { setError(e.message); }
+  }
+  return (
+    <div className="min-h-screen bg-bg flex items-center justify-center p-4">
+      <Card className="w-full max-w-sm">
+        <div className="mb-6">
+          <h1 className="text-xl font-semibold text-zinc-100 mb-1">URL & Email Intel</h1>
+          <p className="text-sm text-muted">Sign in to your security console</p>
+        </div>
+        <form onSubmit={submit} className="space-y-4">
+          <Input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" type="email" />
+          <Input value={password} onChange={e => setPassword(e.target.value)} placeholder="Password" type="password" />
+          <Button className="w-full">Sign in</Button>
+        </form>
+        {error && <p className="mt-3 text-sm text-danger">{error}</p>}
+      </Card>
+    </div>
+  );
+}
+
+/* ─── Shortener ───────────────────────────── */
+function Shortener() {
+  const [url, setUrl] = useState('');
+  const [days, setDays] = useState(14);
+  const [slug, setSlug] = useState('');
+  const [result, setResult] = useState(null);
+  const [links, setLinks] = useState([]);
+  const action = useAction();
+  const refresh = () => api('/api/shorten').then(d => setLinks(d.links)).catch(() => {});
+  useEffect(() => { refresh(); }, []);
+
+  async function submit(e) {
+    e.preventDefault();
+    await action.run(async () => {
+      const d = await api('/api/shorten', { method: 'POST', body: JSON.stringify({ url, retentionDays: days, slug: slug || undefined }) });
+      setResult(d); setUrl(''); setSlug(''); await refresh();
+    });
+  }
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <h2 className="text-base font-medium text-zinc-100 mb-4">Create short link</h2>
+        <form onSubmit={submit} className="space-y-3">
+          <Input required value={url} onChange={e => setUrl(e.target.value)} placeholder="https://example.com/long-url" />
+          <div className="flex gap-3">
+            <Input value={slug} onChange={e => setSlug(e.target.value)} placeholder="Custom slug (optional)" className="flex-1" />
+            <Input type="number" min="1" max="365" value={days} onChange={e => setDays(e.target.value)} className="w-24" title="Retention days" />
+            <Button disabled={action.busy}>Shorten</Button>
+          </div>
+        </form>
+        {action.error && <p className="mt-3 text-sm text-danger">{action.error}</p>}
+        {result && (
+          <div className="mt-4 p-4 rounded-md bg-bg border border-border flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <a href={result.shortUrl} target="_blank" rel="noopener" className="text-accent font-mono text-sm truncate block hover:underline">{result.shortUrl}</a>
+              <p className="text-xs text-muted mt-1">Expires {new Date(result.expiresAt).toLocaleDateString()}</p>
+            </div>
+            <CopyButton text={result.shortUrl} />
+          </div>
+        )}
+      </Card>
+
+      {links.length > 0 && (
+        <Card>
+          <h2 className="text-base font-medium text-zinc-100 mb-4">Recent links</h2>
+          <div className="divide-y divide-border">
+            {links.map(l => (
+              <div key={l.slug} className="py-3 flex items-center justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <code className="text-sm text-accent font-mono">/s/{l.slug}</code>
+                    <CopyButton text={`${window.location.origin}/s/${l.slug}`} />
+                  </div>
+                  <p className="text-xs text-muted truncate mt-0.5">{l.targetUrl}</p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className="text-xs text-zinc-400">{l.hits} hits</p>
+                  <p className="text-xs text-muted">exp {new Date(l.expiresAt).toLocaleDateString()}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/* ─── Master URL List ─────────────────────── */
+function MasterList() {
+  const [urls, setUrls] = useState('');
+  const [title, setTitle] = useState('');
+  const [result, setResult] = useState(null);
+  const [lists, setLists] = useState([]);
+  const action = useAction();
+  const refresh = () => api('/api/master-list').then(d => setLists(d.lists || [])).catch(() => {});
+  useEffect(() => { refresh(); }, []);
+
+  async function submit(e) {
+    e.preventDefault();
+    const urlArray = urls.split('\n').map(u => u.trim()).filter(Boolean);
+    if (!urlArray.length) return;
+    await action.run(async () => {
+      const d = await api('/api/master-list', { method: 'POST', body: JSON.stringify({ urls: urlArray, title: title || undefined }) });
+      setResult(d); setUrls(''); setTitle(''); await refresh();
+    });
+  }
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <h2 className="text-base font-medium text-zinc-100 mb-1">Create URL list</h2>
+        <p className="text-sm text-muted mb-4">Paste multiple URLs (one per line) → get a single shareable link that shows them as a plain text list.</p>
+        <form onSubmit={submit} className="space-y-3">
+          <Input value={title} onChange={e => setTitle(e.target.value)} placeholder="List title (optional)" />
+          <textarea value={urls} onChange={e => setUrls(e.target.value)} placeholder={"https://example.com\nhttps://another.com\nhttps://third.com"} rows={5}
+            className="flex w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-zinc-100 placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent resize-y font-mono" />
+          <Button disabled={action.busy}>Create list link</Button>
+        </form>
+        {action.error && <p className="mt-3 text-sm text-danger">{action.error}</p>}
+        {result && (
+          <div className="mt-4 p-4 rounded-md bg-bg border border-border flex items-center justify-between gap-4">
+            <div className="min-w-0">
+              <a href={result.viewUrl} target="_blank" rel="noopener" className="text-accent font-mono text-sm truncate block hover:underline">{result.viewUrl}</a>
+              <p className="text-xs text-muted mt-1">{result.count} URLs</p>
+            </div>
+            <CopyButton text={result.viewUrl} />
+          </div>
+        )}
+      </Card>
+
+      {lists.length > 0 && (
+        <Card>
+          <h2 className="text-base font-medium text-zinc-100 mb-4">Your lists</h2>
+          <div className="divide-y divide-border">
+            {lists.map(l => (
+              <div key={l.slug} className="py-3 flex items-center justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <code className="text-sm text-accent font-mono">/m/{l.slug}</code>
+                    <CopyButton text={`${window.location.origin}/m/${l.slug}`} />
+                  </div>
+                  <p className="text-xs text-muted mt-0.5">{l.title || 'Untitled'} · {l.count} URLs</p>
+                </div>
+                <p className="text-xs text-muted shrink-0">{new Date(l.createdAt).toLocaleDateString()}</p>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/* ─── URL Checker ─────────────────────────── */
+function Checker() {
+  const [url, setUrl] = useState('');
+  const [result, setResult] = useState(null);
+  const action = useAction();
+  async function submit(e) {
+    e.preventDefault();
+    await action.run(async () => setResult(await api('/api/check-url', { method: 'POST', body: JSON.stringify({ url }) })));
+  }
+  const verdictVariant = { 'high': 'danger', 'medium': 'warning', 'low': 'default', 'clean-ish': 'success' };
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <h2 className="text-base font-medium text-zinc-100 mb-1">Check URL reputation</h2>
+        <p className="text-sm text-muted mb-4">DNS, HTTP chain, risk scoring, VirusTotal (when configured).</p>
+        <form onSubmit={submit} className="flex gap-3">
+          <Input required value={url} onChange={e => setUrl(e.target.value)} placeholder="https://suspicious.example/path" className="flex-1" />
+          <Button disabled={action.busy}>Check</Button>
+        </form>
+        {action.error && <p className="mt-3 text-sm text-danger">{action.error}</p>}
+      </Card>
+      {result && (
+        <Card>
+          <div className="flex items-center gap-3 mb-4">
+            <Badge variant={verdictVariant[result.risk?.verdict] || 'default'}>{result.risk?.verdict}</Badge>
+            <span className="text-sm text-zinc-400">Score: {result.risk?.score}/100</span>
+            <span className="text-xs text-muted">{result.elapsed_ms}ms</span>
+          </div>
+          <pre className="text-xs text-zinc-300 bg-bg rounded-md p-4 overflow-auto max-h-96 border border-border">{JSON.stringify(result, null, 2)}</pre>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/* ─── Email Analyzer ──────────────────────── */
+function EmailAnalyzer() {
+  const [result, setResult] = useState(null);
+  const action = useAction();
+  async function submit(e) {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    await action.run(async () => setResult(await api('/api/email-analyze', { method: 'POST', body: fd })));
+  }
+  return (
+    <div className="space-y-6">
+      <Card>
+        <h2 className="text-base font-medium text-zinc-100 mb-1">Email / Sender Analyzer</h2>
+        <p className="text-sm text-muted mb-4">Upload .eml → MX, SPF, DKIM, DMARC, auth results, received chain, embedded URLs.</p>
+        <form onSubmit={submit} className="flex gap-3 items-end">
+          <input required name="eml" type="file" accept=".eml,message/rfc822"
+            className="flex-1 text-sm text-zinc-400 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-card-hover file:text-zinc-200 hover:file:bg-zinc-700" />
+          <Button disabled={action.busy}>Analyze</Button>
+        </form>
+        {action.error && <p className="mt-3 text-sm text-danger">{action.error}</p>}
+      </Card>
+      {result && (
+        <Card>
+          <div className="flex flex-wrap gap-2 mb-4">
+            {result.warnings?.map(w => <Badge key={w} variant="warning">{w}</Badge>)}
+            {!result.warnings?.length && <Badge variant="success">No warnings</Badge>}
+          </div>
+          <div className="grid grid-cols-3 gap-4 mb-4 text-center">
+            <div><p className="text-2xl font-bold text-zinc-100">{result.receivedCount}</p><p className="text-xs text-muted">Hops</p></div>
+            <div><p className="text-2xl font-bold text-zinc-100">{result.urls?.length || 0}</p><p className="text-xs text-muted">URLs</p></div>
+            <div><p className="text-2xl font-bold text-zinc-100">{result.warnings?.length || 0}</p><p className="text-xs text-muted">Warnings</p></div>
+          </div>
+          <pre className="text-xs text-zinc-300 bg-bg rounded-md p-4 overflow-auto max-h-96 border border-border">{JSON.stringify(result, null, 2)}</pre>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+/* ─── Toolkit ─────────────────────────────── */
+function Toolkit() {
+  const [text, setText] = useState('hxxps://example[.]com/login');
+  const refang = useMemo(() => text.replaceAll('hxxp', 'http').replaceAll('[.]', '.').replaceAll('(.)', '.'), [text]);
+  const defang = useMemo(() => text.replace(/https?:\/\//g, m => m.replace('http', 'hxxp')).replace(/\./g, '[.]'), [text]);
+  const domains = useMemo(() => [...new Set(refang.match(/(?:[a-z0-9-]+\.)+[a-z]{2,}/gi) || [])], [refang]);
+  return (
+    <Card>
+      <h2 className="text-base font-medium text-zinc-100 mb-4">Defang / Refang toolkit</h2>
+      <textarea value={text} onChange={e => setText(e.target.value)} rows={3}
+        className="flex w-full rounded-md border border-border bg-bg px-3 py-2 text-sm text-zinc-100 font-mono placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-accent resize-y mb-4" />
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="p-3 rounded-md bg-bg border border-border">
+          <div className="flex items-center justify-between mb-2"><h3 className="text-xs font-medium text-muted uppercase">Refanged</h3><CopyButton text={refang} /></div>
+          <code className="text-xs text-zinc-300 break-all">{refang}</code>
+        </div>
+        <div className="p-3 rounded-md bg-bg border border-border">
+          <div className="flex items-center justify-between mb-2"><h3 className="text-xs font-medium text-muted uppercase">Defanged</h3><CopyButton text={defang} /></div>
+          <code className="text-xs text-zinc-300 break-all">{defang}</code>
+        </div>
+        <div className="p-3 rounded-md bg-bg border border-border">
+          <div className="flex items-center justify-between mb-2"><h3 className="text-xs font-medium text-muted uppercase">Domains</h3><CopyButton text={domains.join('\n')} /></div>
+          <code className="text-xs text-zinc-300 break-all">{domains.join('\n') || 'none'}</code>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+createRoot(document.getElementById('root')).render(<App />);

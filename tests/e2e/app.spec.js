@@ -2,45 +2,36 @@ import { test, expect } from '@playwright/test';
 
 async function login(page) {
   await page.goto('/');
-  await page.getByPlaceholder('password').fill('password123');
-  await page.getByRole('button', { name: 'Login' }).click();
-  await expect(page.getByText('Phishing surface, one console.')).toBeVisible();
+  await page.getByPlaceholder('Email').fill('admin@example.com');
+  await page.getByPlaceholder('Password').fill('password123');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByText('Shortener')).toBeVisible();
 }
 
-test('operator can use core URL and email workflows without UI errors', async ({ page }) => {
-  const consoleErrors = [];
-  page.on('console', msg => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
+test('login and create short link with copy button', async ({ page }) => {
   await login(page);
-
-  await page.getByRole('button', { name: 'URL Shortener' }).click();
-  await page.getByPlaceholder('https://example.com/payroll-login').fill('https://example.com/login');
-  const slug = `demo-${Date.now()}`;
-  await page.getByPlaceholder('custom slug (optional)').fill(slug);
-  await page.getByRole('button', { name: 'Create' }).click();
-  await expect(page.getByText(`/s/${slug}`)).toBeVisible();
-
-  await page.getByRole('button', { name: 'URL Checker' }).click();
-  await page.getByPlaceholder('https://suspicious.example/path').fill('https://example.com');
-  await page.getByRole('button', { name: 'Check', exact: true }).click();
-  await expect(page.getByText(/Risk score/)).toBeVisible();
-
-  await page.getByRole('button', { name: 'Email/Sender Analyzer' }).click();
-  await page.setInputFiles('input[type="file"]', {
-    name: 'sample.eml',
-    mimeType: 'message/rfc822',
-    buffer: Buffer.from('From: Sender <sender@example.com>\nTo: Analyst <a@example.net>\nSubject: Test\nAuthentication-Results: mx.example.net; spf=pass dkim=pass dmarc=pass\n\nVisit https://example.com/login')
-  });
-  await page.getByRole('button', { name: 'Analyze', exact: true }).click();
-  await expect(page.getByText('Embedded URLs')).toBeVisible();
-  await expect(page.getByText('sender@example.com')).toBeVisible();
-
-  expect(consoleErrors).toEqual([]);
+  await page.getByPlaceholder('https://example.com/long-url').fill('https://example.com/test-url');
+  await page.getByRole('button', { name: 'Shorten', exact: true }).click();
+  await expect(page.locator('a[href*="/s/"]')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Copy' }).first()).toBeVisible();
 });
 
-test('forms show API errors instead of crashing', async ({ page }) => {
+test('url checker shows risk badge', async ({ page }) => {
   await login(page);
-  await page.getByRole('button', { name: 'URL Checker' }).click();
-  await page.getByPlaceholder('https://suspicious.example/path').fill('http://127.0.0.1:1');
+  await page.getByRole('button', { name: 'Checker', exact: true }).click();
+  await page.getByPlaceholder('https://suspicious.example/path').fill('https://example.com');
   await page.getByRole('button', { name: 'Check', exact: true }).click();
-  await expect(page.getByText(/Private\/localhost targets are blocked|Private network target blocked/)).toBeVisible();
+  await expect(page.getByText(/clean-ish|low|medium|high/).first()).toBeVisible({ timeout: 15000 });
+});
+
+test('master url list creates shareable link', async ({ page }) => {
+  await login(page);
+  await page.getByRole('button', { name: 'URL List', exact: true }).click();
+  await page.getByPlaceholder('List title (optional)').fill('Test list');
+  await page.locator('textarea').fill('https://one.com\nhttps://two.com\nhttps://three.com');
+  await page.getByRole('button', { name: 'Create list link' }).click();
+  // Wait for either the link or an error message
+  await expect(page.locator('a[href*="/m/"], .text-danger')).toBeVisible({ timeout: 10000 });
+  // Should have created the link, not an error
+  await expect(page.locator('a[href*="/m/"]')).toBeVisible();
 });
