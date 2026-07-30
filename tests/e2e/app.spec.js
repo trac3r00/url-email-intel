@@ -10,6 +10,7 @@ async function login(page) {
 
 test('login and create short link with copy button', async ({ page }) => {
   await login(page);
+  await page.getByRole('button', { name: 'Shortener', exact: true }).click();
   await page.getByPlaceholder('https://example.com/long-url').fill('https://example.com/test-url');
   await page.getByRole('button', { name: 'Shorten', exact: true }).click();
   await expect(page.locator('a[href*="/s/"]')).toBeVisible();
@@ -19,9 +20,10 @@ test('login and create short link with copy button', async ({ page }) => {
 test('url checker shows risk badge', async ({ page }) => {
   await login(page);
   await page.getByRole('button', { name: 'Checker', exact: true }).click();
-  await page.getByPlaceholder('https://suspicious.example/path').fill('https://example.com');
+  const healthUrl = new URL('/api/health', page.url()).href;
+  await page.getByPlaceholder('https://suspicious.example/path').fill(healthUrl);
   await page.getByRole('button', { name: 'Check', exact: true }).click();
-  await expect(page.getByText(/clean-ish|low|medium|high/).first()).toBeVisible({ timeout: 15000 });
+  await expect(page.getByText(/^(clean-ish|low|medium|high)$/i)).toBeVisible();
 });
 
 test('master url list creates shareable link', async ({ page }) => {
