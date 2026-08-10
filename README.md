@@ -110,19 +110,19 @@ Build the frontend with `npm run build` before using this command outside the de
 
 Configuration is supplied through environment variables.
 
-| Variable | Default | Description |
-| --- | --- | --- |
-| `PORT` | `4177` | Port used by the Express server. |
-| `PUBLIC_URL` | Request origin | Public base URL used when generating short-link and URL-list URLs. |
-| `DATA_DIR` | `./data` | Directory containing `app.db` and, when generated, `INITIAL_ADMIN.txt`. |
-| `ADMIN_EMAIL` | `admin@example.com` | Email assigned to the initial administrator account. |
-| `ADMIN_PASSWORD` | Random on first startup | Password assigned to the initial administrator account. |
-| `SESSION_SECRET` | Development-only fallback | Secret used to sign session cookies. Set a strong value for every deployment. |
-| `VIRUSTOTAL_API_KEY` | Unset | Enables VirusTotal URL reputation lookups. |
-| `HTTP_TIMEOUT_MS` | `12000` | Timeout in milliseconds for each outbound HTTP request made by the URL checker. |
-| `ALLOW_PRIVATE_TARGETS` | `false` | Set to `true` only in a trusted lab to permit localhost and private-network URL checks. |
-| `COOKIE_SECURE` | Automatic | Set to `false` only for production-mode testing over plain HTTP. In production, secure-cookie handling otherwise follows the proxied request protocol. |
-| `NODE_ENV` | Unset | Set to `production` to enable production defaults, including automatic secure-cookie handling. |
+| Variable                | Default                   | Description                                                                                                                                            |
+| ----------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `PORT`                  | `4177`                    | Port used by the Express server.                                                                                                                       |
+| `PUBLIC_URL`            | Request origin            | Public base URL used when generating short-link and URL-list URLs.                                                                                     |
+| `DATA_DIR`              | `./data`                  | Directory containing `app.db` and, when generated, `INITIAL_ADMIN.txt`.                                                                                |
+| `ADMIN_EMAIL`           | `admin@example.com`       | Email assigned to the initial administrator account.                                                                                                   |
+| `ADMIN_PASSWORD`        | Random on first startup   | Password assigned to the initial administrator account.                                                                                                |
+| `SESSION_SECRET`        | Development-only fallback | Secret used to sign session cookies. Set a strong value for every deployment.                                                                          |
+| `VIRUSTOTAL_API_KEY`    | Unset                     | Enables VirusTotal URL reputation lookups.                                                                                                             |
+| `HTTP_TIMEOUT_MS`       | `12000`                   | Timeout in milliseconds for each outbound HTTP request made by the URL checker.                                                                        |
+| `ALLOW_PRIVATE_TARGETS` | `false`                   | Set to `true` only in a trusted lab to permit localhost and private-network URL checks.                                                                |
+| `COOKIE_SECURE`         | Automatic                 | Set to `false` only for production-mode testing over plain HTTP. In production, secure-cookie handling otherwise follows the proxied request protocol. |
+| `NODE_ENV`              | Unset                     | Set to `production` to enable production defaults, including automatic secure-cookie handling.                                                         |
 
 Never commit `.env`, `INITIAL_ADMIN.txt`, the SQLite database, or API keys. The existing `.gitignore` excludes `.env` and the default `data/` directory.
 
